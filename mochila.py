@@ -1,139 +1,176 @@
 import random
+import matplotlib.pyplot as plt
 
-# parâmetros dos itens: peso, valor e quantidade máxima
-items = [
-    {"weight": 3, "value": 40, "max_quantity": 3},  # item 1
-    {"weight": 5, "value": 100, "max_quantity": 2}, # item 2
-    {"weight": 2, "value": 50, "max_quantity": 5}   # item 3
+itens = [
+    {'nome': 'A', 'peso': 2, 'valor': 40},
+    {'nome': 'B', 'peso': 3, 'valor': 50},
+    {'nome': 'C', 'peso': 4, 'valor': 65},
+    {'nome': 'D', 'peso': 5, 'valor': 80},
+    {'nome': 'E', 'peso': 7, 'valor': 110},
+    {'nome': 'F', 'peso': 1, 'valor': 15},
+    {'nome': 'G', 'peso': 6, 'valor': 90},
+    {'nome': 'H', 'peso': 4.5, 'valor': 70},
+    {'nome': 'I', 'peso': 3.5, 'valor': 60},
+    {'nome': 'J', 'peso': 2.5, 'valor': 55}
 ]
 
-# capacidade máxima de peso da mochila
-capacity = 20
+CAPACIDADE = 15 
+TAMANHO_POPULACAO = 50
+NUM_GERACOES = 200
+TAXA_CRUZAMENTO = 0.8
+TAXA_MUTACAO = 0.05
+NUM_PARES_CRUZAMENTO = int((TAMANHO_POPULACAO * TAXA_CRUZAMENTO) / 2)  # 20 pares
 
-# função objetivo (valor total) se o peso for permitido, senão 0
-def fitness(individual):
-    # calcula o peso total do indivíduo
-    total_weight = sum(gene * item["weight"] for gene, item in zip(individual, items))
-
-    # calcula o valor total do indivíduo
-    total_value = sum(gene * item["value"] for gene, item in zip(individual, items))
-
-    # se o peso for maior que a capacidade retorna 0 (indivíduo inválido)
-    return total_value if total_weight <= capacity else 0
-
-# criação de indivíduo
-def create_individual():
+# criar um indivíduo viável (peso <= 15kg)
+def criar_individuo_viavel():
     while True:
-        # gera um cromossomo aleatório [X1, X2, X3] respeitando o limite de quantidade de cada item
-        individual = [random.randint(0, item["max_quantity"]) for item in items] 
+        individuo = [random.randint(0, 1) for _ in range(len(itens))]
+        peso = calcular_peso(individuo)
+        if peso <= CAPACIDADE:
+            return individuo
 
-        # se ultrapassar o peso máximo imprime que é inválido e tenta novamente, retorna apenas indivíduos válidos
-        if fitness(individual) > 0:
-            return individual
-        else:
-            print(f"Indivíduo inválido (peso excedido): {individual}. Gerando novo...")
+# calcular o peso de um indivíduo
+def calcular_peso(individuo):
+    return sum(itens[i]['peso'] for i in range(len(individuo)) if individuo[i] == 1)
 
-# Criação da população inicial
-def create_population():
-    return [create_individual() for _ in range(4)]
+# calcular o valor de um indivíduo
+def calcular_valor(individuo):
+    peso = calcular_peso(individuo)
+    if peso > CAPACIDADE:
+        return 0
+    return sum(itens[i]['valor'] for i in range(len(individuo)) if individuo[i] == 1)
 
-# Função de crossover conforme seu exemplo
-def crossover(population):
-    population_sorted = sorted(population, key=fitness, reverse=True)
-    best_half = population_sorted[:2]
-    worst_half = population_sorted[-2:]
+# seleção por roleta
+def selecao_roleta(populacao, valores):
+    total_valor = sum(valores)
+    if total_valor == 0:
+        return random.choices(populacao, k=2)
+    
+    probabilidades = [v/total_valor for v in valores]
+    return random.choices(populacao, weights=probabilidades, k=2)
 
-    print("\nDividindo população:")
-    print(f"Melhores: {best_half}")
-    print(f"Piores: {worst_half}")
+# crossover de 1 ou 2 pontos
+def crossover(pai1, pai2):
+    # sorteia duas posições X e Y (0 a 9, podendo ser iguais)
+    X = random.randint(0, 9)
+    Y = random.randint(0, 9)
+    
+    # cria os filhos como cópias dos pais
+    filho1 = pai1.copy()
+    filho2 = pai2.copy()
+    
+    # troca o gene na posição X
+    filho1[X], filho2[X] = filho2[X], filho1[X]
+    
+    # se X for diferente de Y, troca também o gene na posição Y
+    if X != Y:
+        filho1[Y], filho2[Y] = filho2[Y], filho1[Y]
+    
+    # garante que os filhos são viáveis
+    while calcular_peso(filho1) > CAPACIDADE or calcular_peso(filho2) > CAPACIDADE:
+        X = random.randint(0, 9)
+        Y = random.randint(0, 9)
+        
+        filho1 = pai1.copy()
+        filho2 = pai2.copy()
+        
+        filho1[X], filho2[X] = filho2[X], filho1[X]
+        
+        if X != Y:
+            filho1[Y], filho2[Y] = filho2[Y], filho1[Y]
+    
+    return filho1, filho2
 
-    new_population = []
+# mutação
+def mutacao(individuo):
+    if random.random() <= TAXA_MUTACAO:
+        # escolhe qual filho sofrerá mutação (0 ou 1)
+        filho_mutado = individuo.copy()
+        
+        # sorteia o gene a ser mutado
+        gene = random.randint(0, len(filho_mutado)-1)
+        
+        # inverte o valor do gene
+        filho_mutado[gene] = 1 - filho_mutado[gene]
+        
+        # verifica se a mutação resultou em um indivíduo viável
+        if calcular_peso(filho_mutado) <= CAPACIDADE:
+            return filho_mutado
+    
+    return individuo
 
-    for i in range(2):
-        parent1 = best_half[i]
-        parent2 = worst_half[i]
+# algoritmo genético
+def algoritmo_genetico():
+    # criação da população inicial (50 indivíduos viáveis)
+    populacao = [criar_individuo_viavel() for _ in range(TAMANHO_POPULACAO)]
+    melhor_historico = []
+    melhor_global = None
+    melhor_valor_global = -1
+    
+    for geracao in range(NUM_GERACOES):
+        # calcula o valor de cada indivíduo
+        valores = [calcular_valor(ind) for ind in populacao]
+        
+        # identifica o melhor da geração atual
+        melhor_valor = max(valores)
+        melhor_idx = valores.index(melhor_valor)
+        melhor_individuo = populacao[melhor_idx]
+        
+        # Atualiza o melhor global
+        if melhor_valor > melhor_valor_global:
+            melhor_valor_global = melhor_valor
+            melhor_global = melhor_individuo
+        
+        # Armazena o histórico do melhor valor
+        melhor_historico.append(melhor_valor)
+        
+        # Imprime informações da geração atual
+        print(f"\nGeração {geracao + 1}:")
+        print(f"Melhor indivíduo: {melhor_individuo}")
+        print(f"Valor: R${melhor_valor}")
+        print(f"Peso: {calcular_peso(melhor_individuo)} kg")
+        print(f"Itens: {[itens[i]['nome'] for i in range(len(melhor_individuo)) if melhor_individuo[i] == 1]}")
+        
+        # 2. Seleção dos pais para cruzamento (20 pares)
+        nova_populacao = []
+        pais_selecionados = []
+        
+        for _ in range(NUM_PARES_CRUZAMENTO):
+            # Seleciona dois pais por roleta
+            pai1, pai2 = selecao_roleta(populacao, valores)
+            pais_selecionados.extend([pai1, pai2])
+            
+            # 3. Cruzamento (gera dois filhos)
+            filho1, filho2 = crossover(pai1, pai2)
+            
+            # 4. Mutação (aplicada com 5% de probabilidade)
+            filho1 = mutacao(filho1)
+            filho2 = mutacao(filho2)
+            
+            nova_populacao.extend([filho1, filho2])
+        
+        # Completa a população com indivíduos aleatórios (para manter 50 indivíduos)
+        while len(nova_populacao) < TAMANHO_POPULACAO:
+            nova_populacao.append(criar_individuo_viavel())
+        
+        # A nova população substitui a antiga
+        populacao = nova_populacao[:TAMANHO_POPULACAO]
+    
+    # Resultado final
+    print("\n=== MELHOR SOLUÇÃO ENCONTRADA ===")
+    print(f"Indivíduo: {melhor_global}")
+    print(f"Valor: R${melhor_valor_global}")
+    print(f"Peso: {calcular_peso(melhor_global)} kg")
+    print(f"Itens selecionados: {[itens[i]['nome'] for i in range(len(melhor_global)) if melhor_global[i] == 1]}")
+    
+    # Gráfico de convergência
+    plt.figure(figsize=(10, 6))
+    plt.plot(melhor_historico, 'b-')
+    plt.title("Convergência do Algoritmo Genético")
+    plt.xlabel("Geração")
+    plt.ylabel("Melhor Valor (R$)")
+    plt.grid(True)
+    plt.show()
 
-        child1 = parent1.copy()
-        child2 = parent2.copy()
-
-        num_genes = random.randint(1, 2)
-        genes_to_swap = random.sample(range(len(items)), num_genes)
-
-        print(f"\nCruzamento {i+1}:")
-        print(f"Pais -> {parent1} & {parent2}")
-        print(f"Genes sorteados para troca: {genes_to_swap}")
-
-        for gene_index in genes_to_swap:
-            child1[gene_index], child2[gene_index] = parent2[gene_index], parent1[gene_index]
-
-        print(f"Filhos gerados: {child1} e {child2}")
-        new_population.extend([child1, child2])
-
-    return new_population
-
-# Mutação com 10% de chance
-def mutate(individual):
-    if random.random() < 0.1:
-        gene_index = random.randint(0, len(items) - 1)
-        old_value = individual[gene_index]
-        individual[gene_index] = random.randint(0, items[gene_index]["max_quantity"])
-        print(f"Mutação! Gene {gene_index} alterado de {old_value} para {individual[gene_index]}")
-    return individual
-
-# Algoritmo principal com Best registrado
-def genetic_algorithm():
-    population = create_population()
-
-    print("\nPopulação Inicial:")
-    labels = ['A', 'B', 'C', 'D']
-    for label, individual in zip(labels, population):
-        print(f"{label}: {individual} | Valor: {fitness(individual)}")
-
-    best_solution = max(population, key=fitness)
-    best_value = fitness(best_solution)
-    print(f"\nMelhor valor inicial (Best): {best_value} - Solução: {best_solution}")
-
-    no_improvement = 0
-    generation = 0
-
-    while no_improvement < 2:
-        generation += 1
-        print(f"\n=== Geração {generation} ===")
-
-        # Cruzamento
-        population = crossover(population)
-
-        # Mutação aplicada e verificação
-        for i in range(len(population)):
-            population[i] = mutate(population[i])
-
-            # Se infactível, substituir
-            if fitness(population[i]) == 0:
-                print(f"Indivíduo {i+1} infactível após mutação: {population[i]}. Substituindo...")
-                population[i] = create_individual()
-                print(f"Novo indivíduo {i+1}: {population[i]} | Valor: {fitness(population[i])}")
-
-        # Exibir nova população
-        print("\nNova População:")
-        for idx, individual in enumerate(population):
-            print(f"Indivíduo {idx+1}: {individual} | Valor: {fitness(individual)}")
-
-        # Avalia a geração
-        current_best = max(population, key=fitness)
-        current_value = fitness(current_best)
-
-        if current_value > best_value:
-            best_solution = current_best
-            best_value = current_value
-            no_improvement = 0
-            print(f"\nNovo Best encontrado! Valor: {best_value} | Solução: {best_solution}")
-        else:
-            no_improvement += 1
-            print(f"\nNenhuma melhora. Best continua: {best_value} | Solução: {best_solution}")
-
-    print("\n==== Melhor Solução Final ====")
-    print(f"Solução: {best_solution}")
-    print(f"Valor Total: {best_value}")
-
-# Executar o algoritmo
-genetic_algorithm()
+# Executa o algoritmo
+algoritmo_genetico()
