@@ -19,35 +19,37 @@ TAMANHO_POPULACAO = 50
 NUM_GERACOES = 200
 TAXA_CRUZAMENTO = 0.8
 TAXA_MUTACAO = 0.05
-NUM_PARES_CRUZAMENTO = int((TAMANHO_POPULACAO * TAXA_CRUZAMENTO) / 2)  # 20 pares
+INDIVIDUOS_CRUZAMENTO = 40
 
 # criar um indivíduo viável (peso <= 15kg)
 def criar_individuo_viavel():
     while True:
-        individuo = [random.randint(0, 1) for _ in range(len(itens))]
-        peso = calcular_peso(individuo)
+        individuo = [random.randint(0, 1) for _ in range(len(itens))] # seleciona um valor binário (0 ou 1) para representar a quantidade de cada item na solução
+        peso = calcular_peso(individuo) # calcula o peso para garantir que é menor ou igual a 15kg
         if peso <= CAPACIDADE:
-            return individuo
+            return individuo # só retorna o indivíduo criado se ele for factível
 
 # calcular o peso de um indivíduo
 def calcular_peso(individuo):
     return sum(itens[i]['peso'] for i in range(len(individuo)) if individuo[i] == 1)
 
-# calcular o valor de um indivíduo
+# calcular o valor de um indivíduo factível
 def calcular_valor(individuo):
     peso = calcular_peso(individuo)
     if peso > CAPACIDADE:
         return 0
     return sum(itens[i]['valor'] for i in range(len(individuo)) if individuo[i] == 1)
 
-# seleção por roleta
-def selecao_roleta(populacao, valores):
+# seleção por roleta (todos os indivíduos tem a mesma chance de serem selecionados)
+def selecao_roleta_proporcional(populacao, valores, k):
+    # calcula o valor total da população
     total_valor = sum(valores)
-    if total_valor == 0:
-        return random.choices(populacao, k=2)
     
+    # calcula as probabilidades proporcionalmente aos valores
     probabilidades = [v/total_valor for v in valores]
-    return random.choices(populacao, weights=probabilidades, k=2)
+    
+    # seleciona k indivíduos com probabilidade proporcional ao seu valor
+    return random.choices(populacao, weights=probabilidades, k=k)
 
 # crossover de 1 ou 2 pontos
 def crossover(pai1, pai2):
@@ -62,11 +64,11 @@ def crossover(pai1, pai2):
     # troca o gene na posição X
     filho1[X], filho2[X] = filho2[X], filho1[X]
     
-    # se X for diferente de Y, troca também o gene na posição Y
+    # se X for diferente de Y, troca o gene na posição Y
     if X != Y:
         filho1[Y], filho2[Y] = filho2[Y], filho1[Y]
     
-    # garante que os filhos são viáveis
+    # garante que os filhos são viáveis e refaz o cruzamento caso algum ultrapasse o peso máximo
     while calcular_peso(filho1) > CAPACIDADE or calcular_peso(filho2) > CAPACIDADE:
         X = random.randint(0, 9)
         Y = random.randint(0, 9)
@@ -82,26 +84,30 @@ def crossover(pai1, pai2):
     return filho1, filho2
 
 # mutação
-def mutacao(individuo):
-    if random.random() <= TAXA_MUTACAO:
-        # escolhe qual filho sofrerá mutação (0 ou 1)
-        filho_mutado = individuo.copy()
+def mutacao(individuo, max_tentativas=10):
+    tentativas = 0
+    while tentativas < max_tentativas:
+        # cria uma cópia do indivíduo para modificar
+        individuo_mutado = individuo.copy()
         
         # sorteia o gene a ser mutado
-        gene = random.randint(0, len(filho_mutado)-1)
+        gene = random.randint(0, len(individuo_mutado)-1)
         
-        # inverte o valor do gene
-        filho_mutado[gene] = 1 - filho_mutado[gene]
+        # inverte o valor do gene (0 vira 1, 1 vira 0)
+        individuo_mutado[gene] = 1 - individuo_mutado[gene]
         
         # verifica se a mutação resultou em um indivíduo viável
-        if calcular_peso(filho_mutado) <= CAPACIDADE:
-            return filho_mutado
+        if calcular_peso(individuo_mutado) <= CAPACIDADE:
+            return individuo_mutado
+
+        tentativas += 1
     
+    # se não encontrou uma mutação válida após 10 tentativas, retorna o original para não entrar em loop infinito
     return individuo
 
 # algoritmo genético
 def algoritmo_genetico():
-    # criação da população inicial (50 indivíduos viáveis)
+    # criação da população inicial (50 indivíduos factíveis)
     populacao = [criar_individuo_viavel() for _ in range(TAMANHO_POPULACAO)]
     melhor_historico = []
     melhor_global = None
@@ -116,54 +122,58 @@ def algoritmo_genetico():
         melhor_idx = valores.index(melhor_valor)
         melhor_individuo = populacao[melhor_idx]
         
-        # Atualiza o melhor global
+        # atualiza o melhor global
         if melhor_valor > melhor_valor_global:
             melhor_valor_global = melhor_valor
             melhor_global = melhor_individuo
         
-        # Armazena o histórico do melhor valor
+        # armazena o histórico do melhor valor
         melhor_historico.append(melhor_valor)
         
-        # Imprime informações da geração atual
+        # imprime informações da geração atual
         print(f"\nGeração {geracao + 1}:")
         print(f"Melhor indivíduo: {melhor_individuo}")
         print(f"Valor: R${melhor_valor}")
         print(f"Peso: {calcular_peso(melhor_individuo)} kg")
         print(f"Itens: {[itens[i]['nome'] for i in range(len(melhor_individuo)) if melhor_individuo[i] == 1]}")
         
-        # 2. Seleção dos pais para cruzamento (20 pares)
-        nova_populacao = []
-        pais_selecionados = []
+        # selecionar 40 indivíduos para cruzamento (com probabilidade proporcional ao valor)
+        pais = selecao_roleta_proporcional(populacao, valores, INDIVIDUOS_CRUZAMENTO)
         
-        for _ in range(NUM_PARES_CRUZAMENTO):
-            # Seleciona dois pais por roleta
-            pai1, pai2 = selecao_roleta(populacao, valores)
-            pais_selecionados.extend([pai1, pai2])
-            
-            # 3. Cruzamento (gera dois filhos)
+        # realizar cruzamento para gerar 40 filhos
+        filhos = []
+        for i in range(0, INDIVIDUOS_CRUZAMENTO, 2):
+            pai1, pai2 = pais[i], pais[i+1]
             filho1, filho2 = crossover(pai1, pai2)
             
-            # 4. Mutação (aplicada com 5% de probabilidade)
-            filho1 = mutacao(filho1)
-            filho2 = mutacao(filho2)
+            if random.random() <= TAXA_MUTACAO:
+                filho1 = mutacao(filho1)
+            if random.random() <= TAXA_MUTACAO:
+                filho2 = mutacao(filho2)
             
-            nova_populacao.extend([filho1, filho2])
+            filhos.extend([filho1, filho2])
         
-        # Completa a população com indivíduos aleatórios (para manter 50 indivíduos)
-        while len(nova_populacao) < TAMANHO_POPULACAO:
-            nova_populacao.append(criar_individuo_viavel())
+        # 10 indivíduos não selecionados p/ cruzamento são mantidos na próxima geração
+        mantidos =  [ind for ind in populacao if ind not in pais]
+
+        # nova população = filhos + mantidos
+        nova_populacao = filhos + mantidos
         
-        # A nova população substitui a antiga
-        populacao = nova_populacao[:TAMANHO_POPULACAO]
+        #print(f"Indivíduos selecionados para cruzamento: {len(pais)}")
+        #print(f"Filhos gerados: {len(filhos)}")
+        #print(f"Indivíduos mantidos: {len(mantidos)}")
+        #print(f"Total na nova geração: {len(nova_populacao)}")
+        
+        populacao = nova_populacao
     
-    # Resultado final
+    # resultado final
     print("\n=== MELHOR SOLUÇÃO ENCONTRADA ===")
     print(f"Indivíduo: {melhor_global}")
     print(f"Valor: R${melhor_valor_global}")
     print(f"Peso: {calcular_peso(melhor_global)} kg")
     print(f"Itens selecionados: {[itens[i]['nome'] for i in range(len(melhor_global)) if melhor_global[i] == 1]}")
     
-    # Gráfico de convergência
+    # gráfico de convergência
     plt.figure(figsize=(10, 6))
     plt.plot(melhor_historico, 'b-')
     plt.title("Convergência do Algoritmo Genético")
@@ -172,5 +182,5 @@ def algoritmo_genetico():
     plt.grid(True)
     plt.show()
 
-# Executa o algoritmo
+# executa o algoritmo
 algoritmo_genetico()
