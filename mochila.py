@@ -1,11 +1,3 @@
-# ALTERAÇÃO NA CRIAÇÃO DE NOVA GERAÇÃO
-
-# Número de cruzamentos é dado por 0,8 * tamanho da população dividido por 2
-# Um mesmo pai pode ser selecionado para cruzar mais de uma vez em uma geração
-# Portanto, podem sobrar mais de 10 pais não selecionados para cruzamento em uma geração
-# Todos eles são mantidos para a geração seguinte, juntamente aos novos filhos gerados
-# A nova população cresce rapidamente
-
 import random
 import matplotlib.pyplot as plt
 
@@ -27,7 +19,7 @@ TAMANHO_POPULACAO = 50
 NUM_GERACOES = 200
 TAXA_CRUZAMENTO = 0.8
 TAXA_MUTACAO = 0.05
-NUM_PARES_CRUZAMENTO = int((TAMANHO_POPULACAO * TAXA_CRUZAMENTO) / 2)  # 20 pares
+INDIVIDUOS_CRUZAMENTO = 40
 
 # criar um indivíduo viável (peso <= 15kg)
 def criar_individuo_viavel():
@@ -49,8 +41,15 @@ def calcular_valor(individuo):
     return sum(itens[i]['valor'] for i in range(len(individuo)) if individuo[i] == 1)
 
 # seleção por roleta (todos os indivíduos tem a mesma chance de serem selecionados)
-def selecao_roleta(populacao):
-    return random.choices(populacao, k=2)  # seleciona 2 pais aleatórios com probabilidades iguais para cruzamento
+def selecao_roleta_proporcional(populacao, valores, k):
+    # calcula o valor total da população
+    total_valor = sum(valores)
+    
+    # calcula as probabilidades proporcionalmente aos valores
+    probabilidades = [v/total_valor for v in valores]
+    
+    # seleciona k indivíduos com probabilidade proporcional ao seu valor
+    return random.choices(populacao, weights=probabilidades, k=k)
 
 # crossover de 1 ou 2 pontos
 def crossover(pai1, pai2):
@@ -133,48 +132,38 @@ def algoritmo_genetico():
         
         # imprime informações da geração atual
         print(f"\nGeração {geracao + 1}:")
-        print(f"Tamanho da população: {len(populacao)}")
-        #print(f"Melhor indivíduo: {melhor_individuo}")
-        #print(f"Valor: R${melhor_valor}")
-        #print(f"Peso: {calcular_peso(melhor_individuo)} kg")
-        #print(f"Itens: {[itens[i]['nome'] for i in range(len(melhor_individuo)) if melhor_individuo[i] == 1]}")
+        print(f"Melhor indivíduo: {melhor_individuo}")
+        print(f"Valor: R${melhor_valor}")
+        print(f"Peso: {calcular_peso(melhor_individuo)} kg")
+        print(f"Itens: {[itens[i]['nome'] for i in range(len(melhor_individuo)) if melhor_individuo[i] == 1]}")
         
-        # cálculo dinâmico do número de pares para cruzamento
-        num_pares = int(len(populacao) * TAXA_CRUZAMENTO) // 2
-        # seleção dos pais para cruzamento (20 pares)
-        nova_populacao = []
-        pais_selecionados = []
+        # selecionar 40 indivíduos para cruzamento (com probabilidade proporcional ao valor)
+        pais = selecao_roleta_proporcional(populacao, valores, INDIVIDUOS_CRUZAMENTO)
         
-        for _ in range(num_pares):
-            # seleciona dois pais por roleta
-            pai1, pai2 = selecao_roleta(populacao)
-            pais_selecionados.extend([pai1, pai2])
-            
-            # cruzamento (gera dois filhos)
+        # realizar cruzamento para gerar 40 filhos
+        filhos = []
+        for i in range(0, INDIVIDUOS_CRUZAMENTO, 2):
+            pai1, pai2 = pais[i], pais[i+1]
             filho1, filho2 = crossover(pai1, pai2)
             
-            # mutação (aplicada com 5% de probabilidade)
             if random.random() <= TAXA_MUTACAO:
-                # escolhe aleatoriamente qual filho sofrerá mutação
-                if random.choice([True, False]):
-                    filho1 = mutacao(filho1)
-                else:
-                    filho2 = mutacao(filho2)
+                filho1 = mutacao(filho1)
+            if random.random() <= TAXA_MUTACAO:
+                filho2 = mutacao(filho2)
             
-            nova_populacao.extend([filho1, filho2])
+            filhos.extend([filho1, filho2])
         
-        # identifica os não selecionados
-        nao_selecionados = [ind for ind in populacao if ind not in pais_selecionados]
+        # 10 indivíduos não selecionados p/ cruzamento são mantidos na próxima geração
+        mantidos =  [ind for ind in populacao if ind not in pais]
 
-        # adiciona os não selecionados à nova população
-        nova_populacao.extend(nao_selecionados)
-
-        # verificação de consistência
-        print(f"Indivíduos gerados por cruzamento: {num_pares * 2}")
-        print(f"Indivíduos não selecionados mantidos: {len(nao_selecionados)}")
+        # nova população = filhos + mantidos
+        nova_populacao = filhos + mantidos
+        
+        #print(f"Indivíduos selecionados para cruzamento: {len(pais)}")
+        #print(f"Filhos gerados: {len(filhos)}")
+        #print(f"Indivíduos mantidos: {len(mantidos)}")
         #print(f"Total na nova geração: {len(nova_populacao)}")
         
-        # garante que a população mantém o tamanho correto
         populacao = nova_populacao
     
     # resultado final
